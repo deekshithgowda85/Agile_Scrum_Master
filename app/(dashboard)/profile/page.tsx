@@ -12,12 +12,18 @@ type ProfileDraft = {
   bio: string;
 };
 
+type Account = {
+  email?: string;
+  fullName?: string;
+  orgName?: string;
+};
+
 const STORAGE_KEY = "asm.profile.draft";
 
 export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
-  const [account, setAccount] = useState<{ email: string; fullName: string; orgName: string } | null>(null);
+  const [account, setAccount] = useState<Account>({ email: '-', fullName: '-', orgName: '-' });
   const [draft, setDraft] = useState<ProfileDraft>({
     displayName: "",
     title: "",
@@ -26,53 +32,48 @@ export default function ProfilePage() {
     bio: "",
   });
 
+  // Save profile function
+  const saveProfile = () => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000); // Reset saved state after 3 seconds
+    } catch (error) {
+      console.error("Failed to save profile:", error);
+    }
+  };
+
+  // Fetch user profile data
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const me = await getMe();
-      if (cancelled) return;
-
-      const memberships = Array.isArray(me?.memberships) ? me!.memberships! : [];
-      const activeOrgId = me?.activeOrgId ? String(me.activeOrgId) : "";
-      const activeMembership = memberships.find((m) => String(m?.org?.id || "") === activeOrgId) || memberships[0] || null;
-
-      const fullName = String(me?.user?.fullName || "");
-      const email = String(me?.user?.email || "");
-      const orgName = String(activeMembership?.org?.name || activeMembership?.org?.slug || "No organization");
-
-      setAccount({ email, fullName, orgName });
-
-      const raw = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as Partial<ProfileDraft>;
-          setDraft((prev) => ({
-            ...prev,
-            displayName: String(parsed.displayName || fullName),
-            title: String(parsed.title || ""),
-            phone: String(parsed.phone || ""),
-            timezone: String(parsed.timezone || ""),
-            bio: String(parsed.bio || ""),
-          }));
-        } catch {
-          setDraft((prev) => ({ ...prev, displayName: fullName }));
-        }
-      } else {
-        setDraft((prev) => ({ ...prev, displayName: fullName }));
+    // Load draft from storage
+    try {
+      const savedDraft = localStorage.getItem(STORAGE_KEY);
+      if (savedDraft) {
+        setDraft(JSON.parse(savedDraft));
       }
-      setLoading(false);
-    })();
+    } catch {}
 
-    return () => {
-      cancelled = true;
-    };
+    async function fetchProfile() {
+      try {
+        const userData = await getMe();
+        if (userData?.user) {
+          setAccount({
+            email: userData.user.email || '-',
+            fullName: userData.user.fullName || userData.user.email || '-',
+            orgName: userData.memberships?.[0]?.org?.name || 'No organization',
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch profile:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchProfile();
   }, []);
 
-  function saveProfile() {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1800);
+  if (loading) {
+    return <div>Loading...</div>; // Display loading state
   }
 
   return (
@@ -91,10 +92,14 @@ export default function ProfilePage() {
           {loading ? (
             <p className="text-sm text-slate-600 dark:text-slate-300">Loading profile...</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div>
                 <p className="text-slate-600 dark:text-slate-400">Email</p>
                 <p className="text-slate-900 dark:text-white font-medium">{account?.email || "-"}</p>
+              </div>
+              <div>
+                <p className="text-slate-600 dark:text-slate-400">Full Name</p>
+                <p className="text-slate-900 dark:text-white font-medium">{account?.fullName || "-"}</p>
               </div>
               <div>
                 <p className="text-slate-600 dark:text-slate-400">Organization</p>
